@@ -2148,7 +2148,7 @@ void CodeEdit::set_code_completion_prefixes(const TypedArray<String> &p_prefixes
 	for (int i = 0; i < p_prefixes.size(); i++) {
 		String prefix = p_prefixes[i];
 
-		// Hadle case if we add a prefixe with the editor.
+		// Handle case if we add a prefixe with the editor.
 		if (Engine::get_singleton()->is_editor_hint() && prefix.is_empty()) {
 			prefix = " ";
 		}
