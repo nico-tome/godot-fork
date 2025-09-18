@@ -424,6 +424,12 @@
 				Emits [signal code_completion_requested], if [param force] is [code]true[/code] will bypass all checks. Otherwise will check that the caret is in a word or in front of a prefix. Will ignore the request if all current options are of type file path, node path, or signal.
 			</description>
 		</method>
+		<method name="shape_code">
+			<return type="void" />
+			<description>
+				Redefines the indentations of each line, if [member auto_indent] is[code]true[/code] and according to the current indentation settings.
+			</description>
+		</method>
 		<method name="set_code_completion_selected_index">
 			<return type="void" />
 			<param index="0" name="index" type="int" />

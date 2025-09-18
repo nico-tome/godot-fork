@@ -484,6 +484,8 @@ public:
 
 	void request_code_completion(bool p_force = false);
 
+	void set_code_completion_options(const TypedArray<Dictionary> &p_options);
+
 	void add_code_completion_option(CodeCompletionKind p_type, const String &p_display_text, const String &p_insert_text, const Color &p_text_color = Color(1, 1, 1), const Ref<Resource> &p_icon = Ref<Resource>(), const Variant &p_value = Variant(), int p_location = LOCATION_OTHER);
 	void update_code_completion_options(bool p_forced = false);
 
@@ -520,6 +522,7 @@ public:
 	void delete_lines();
 	void duplicate_selection();
 	void duplicate_lines();
+	void shape_code();
 
 	CodeEdit();
 	~CodeEdit();

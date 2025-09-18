@@ -2169,6 +2169,27 @@ TypedArray<String> CodeEdit::get_code_completion_prefixes() const {
 	return prefixes;
 }
 
+void CodeEdit::set_code_completion_options(const TypedArray<Dictionary> &p_options)
+{
+	code_completion_options.clear();
+	for (int i = 0; i < p_options.size(); i++) {
+		const Dictionary &option_dict = p_options[i];
+		ScriptLanguage::CodeCompletionOption option;
+
+		option.kind = ScriptLanguage::CodeCompletionKind(int(option_dict.get("kind", ScriptLanguage::CODE_COMPLETION_KIND_PLAIN_TEXT)));
+		option.display = String(option_dict.get("display_text", ""));
+		option.insert_text = String(option_dict.get("insert_text", ""));
+		option.font_color = Color(option_dict.get("font_color", Color(1, 1, 1)));
+		option.icon = Ref<Resource>(option_dict.get("icon", Ref<Resource>()));
+		option.default_value = option_dict.get("default_value", Variant());
+		option.location = int(option_dict.get("location", -1));
+
+		code_completion_options.push_back(option);
+	}
+}
+
+
+
 String CodeEdit::get_text_for_code_completion() const {
 	StringBuilder completion_text;
 	const int text_size = get_line_count();
@@ -2245,6 +2266,15 @@ void CodeEdit::add_code_completion_option(CodeCompletionKind p_type, const Strin
 	completion_option.location = p_location;
 	code_completion_option_submitted.push_back(completion_option);
 }
+
+/* void CodeEdit::remove_code_completion_option(String p_display_text) {
+	for (int i = 0; i < code_completion_option_submitted.size(); i++) {
+		if (code_completion_option_submitted[i].display == p_display_text) {
+			code_completion_option_submitted.remove_at(i);
+			return;
+		}
+	}
+} */
 
 void CodeEdit::update_code_completion_options(bool p_forced) {
 	code_completion_forced = p_forced;
@@ -2438,6 +2468,13 @@ void CodeEdit::cancel_code_completion() {
 
 /* Line length guidelines */
 void CodeEdit::set_line_length_guidelines(TypedArray<int> p_guideline_columns) {
+	for (int i = 0; i < p_guideline_columns.size(); i++) {
+		int value = p_guideline_columns[i];
+		if (value < 0) {
+			ERR_FAIL_MSG("Line length guideline columns must be greater than or equal to 0.");
+			p_guideline_columns[i] = 0;
+		}
+	}
 	line_length_guideline_columns = p_guideline_columns;
 	queue_redraw();
 }
@@ -2701,6 +2738,59 @@ void CodeEdit::duplicate_lines() {
 	end_complex_operation();
 }
 
+void CodeEdit::shape_code() {
+	if (!is_editable() || !is_auto_indent_enabled()) {
+		return;
+	}
+
+	int indent_level = 0;
+	const int line_count = get_line_count();
+
+	begin_complex_operation();
+
+	for (int i = 0; i < line_count; i++) {
+		String line = get_line(i);
+		String trimmed_line = line.strip_edges();
+		TypedArray<String> auto_indent_prefixes_list = get_auto_indent_prefixes();
+
+		if (trimmed_line.is_empty()) {
+			if (line.is_empty()) {
+				indent_level = 0;
+				continue;
+			} else {
+				continue;
+			}
+		}
+
+		for (int j = 0; j < auto_brace_completion_pairs.size(); j++) {
+			if (trimmed_line.begins_with(auto_brace_completion_pairs[j].close_key) && auto_indent_prefixes_list.has(auto_brace_completion_pairs[j].open_key)) {
+				indent_level = MAX(indent_level - 1, 0);
+				break;
+			}
+		}
+
+		String correct_indentation = "";
+		if (is_indent_using_spaces()) {
+			correct_indentation = String(" ").repeat(indent_level * get_indent_size());
+		} else {
+			correct_indentation = String("\t").repeat(indent_level);
+		}
+		line = correct_indentation + trimmed_line;
+		set_line(i, line);
+
+		for (int j = 0; j < auto_indent_prefixes_list.size(); j++) {
+			if (trimmed_line.ends_with(auto_indent_prefixes_list[j])) {
+				indent_level++;
+				break;
+			}
+		}
+	}
+
+	end_complex_operation();
+}
+
+/* Word Type */
+
 /* Visual */
 Color CodeEdit::_get_brace_mismatch_color() const {
 	return theme_cache.brace_mismatch_color;
@@ -2867,7 +2957,9 @@ void CodeEdit::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_text_for_code_completion"), &CodeEdit::get_text_for_code_completion);
 	ClassDB::bind_method(D_METHOD("request_code_completion", "force"), &CodeEdit::request_code_completion, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("add_code_completion_option", "type", "display_text", "insert_text", "text_color", "icon", "value", "location"), &CodeEdit::add_code_completion_option, DEFVAL(Color(1, 1, 1)), DEFVAL(Ref<Resource>()), DEFVAL(Variant()), DEFVAL(LOCATION_OTHER));
+	//ClassDB::bind_method(D_METHOD("remove_code_completion_option", "type", "display_text", "insert_text", "text_color", "icon", "value", "location"), &CodeEdit::remove_code_completion_option, DEFVAL(Color(1, 1, 1)), DEFVAL(Ref<Resource>()), DEFVAL(Variant()), DEFVAL(LOCATION_OTHER));
 	ClassDB::bind_method(D_METHOD("update_code_completion_options", "force"), &CodeEdit::update_code_completion_options);
+	ClassDB::bind_method(D_METHOD("set_code_completion_options", "options"), &CodeEdit::set_code_completion_options);
 	ClassDB::bind_method(D_METHOD("get_code_completion_options"), &CodeEdit::get_code_completion_options);
 	ClassDB::bind_method(D_METHOD("get_code_completion_option", "index"), &CodeEdit::get_code_completion_option);
 	ClassDB::bind_method(D_METHOD("get_code_completion_selected_index"), &CodeEdit::get_code_completion_selected_index);
@@ -2881,6 +2973,10 @@ void CodeEdit::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_code_completion_prefixes", "prefixes"), &CodeEdit::set_code_completion_prefixes);
 	ClassDB::bind_method(D_METHOD("get_code_completion_prefixes"), &CodeEdit::get_code_completion_prefixes);
+
+	//ClassDB::bind_method(D_METHOD("get_functions_list"), &CodeEdit::get_functions_list);
+	//ClassDB::bind_method(D_METHOD("get_variables_list"), &CodeEdit::get_variables_list);
+	//ClassDB::bind_method(D_METHOD("get_classes_list"), &CodeEdit::get_classes_list);
 
 	// Overridable
 
@@ -2911,13 +3007,14 @@ void CodeEdit::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("delete_lines"), &CodeEdit::delete_lines);
 	ClassDB::bind_method(D_METHOD("duplicate_selection"), &CodeEdit::duplicate_selection);
 	ClassDB::bind_method(D_METHOD("duplicate_lines"), &CodeEdit::duplicate_lines);
+	ClassDB::bind_method(D_METHOD("shape_code"), &CodeEdit::shape_code);
 
 	/* Inspector */
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "symbol_lookup_on_click"), "set_symbol_lookup_on_click_enabled", "is_symbol_lookup_on_click_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "symbol_tooltip_on_hover"), "set_symbol_tooltip_on_hover_enabled", "is_symbol_tooltip_on_hover_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "line_folding"), "set_line_folding_enabled", "is_line_folding_enabled");
 
-	ADD_PROPERTY(PropertyInfo(Variant::PACKED_INT32_ARRAY, "line_length_guidelines"), "set_line_length_guidelines", "get_line_length_guidelines");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "line_length_guidelines", PROPERTY_HINT_ARRAY_TYPE, "int"), "set_line_length_guidelines", "get_line_length_guidelines");
 
 	ADD_GROUP("Gutters", "gutters_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "gutters_draw_breakpoints_gutter"), "set_draw_breakpoints_gutter", "is_drawing_breakpoints_gutter");
@@ -2932,18 +3029,19 @@ void CodeEdit::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "gutters_draw_fold_gutter"), "set_draw_fold_gutter", "is_drawing_fold_gutter");
 
 	ADD_GROUP("Delimiters", "delimiter_");
-	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "delimiter_strings"), "set_string_delimiters", "get_string_delimiters");
-	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "delimiter_comments"), "set_comment_delimiters", "get_comment_delimiters");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "delimiter_strings", PROPERTY_HINT_ARRAY_TYPE, "String"), "set_string_delimiters", "get_string_delimiters");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "delimiter_comments", PROPERTY_HINT_ARRAY_TYPE, "String"), "set_comment_delimiters", "get_comment_delimiters");
 
 	ADD_GROUP("Code Completion", "code_completion_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "code_completion_enabled"), "set_code_completion_enabled", "is_code_completion_enabled");
-	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "code_completion_prefixes"), "set_code_completion_prefixes", "get_code_completion_prefixes");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "code_completion_prefixes", PROPERTY_HINT_ARRAY_TYPE, "String"), "set_code_completion_prefixes", "get_code_completion_prefixes");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "code_completion_options", PROPERTY_HINT_ARRAY_TYPE, "Dictionary"), "set_code_completion_options", "get_code_completion_options");
 
 	ADD_GROUP("Indentation", "indent_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "indent_size"), "set_indent_size", "get_indent_size");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "indent_use_spaces"), "set_indent_using_spaces", "is_indent_using_spaces");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "indent_automatic"), "set_auto_indent_enabled", "is_auto_indent_enabled");
-	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "indent_automatic_prefixes"), "set_auto_indent_prefixes", "get_auto_indent_prefixes");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "indent_automatic_prefixes", PROPERTY_HINT_ARRAY_TYPE, "String"), "set_auto_indent_prefixes", "get_auto_indent_prefixes");
 
 	ADD_GROUP("Auto Brace Completion", "auto_brace_completion_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "auto_brace_completion_enabled"), "set_auto_brace_completion_enabled", "is_auto_brace_completion_enabled");
